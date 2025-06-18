@@ -1,0 +1,3 @@
+what is the exact season that maccabi haifa won it's first championship in israel in soccer?
+The result should be JSON array where the object in the array has the field, 'year', whose value is
+the result year. Store the JSON in the file "query1.json".
