@@ -1,4 +1,9 @@
 {
   "query_name": "query1.txt",
-  "file_resources": []
+  "file_resources": [
+    {
+      "file_name": "students.txt",
+      "description": "a text file containing information on some of the students, including his or her aspirations, favorite city, and hobbies."
+    }
+  ]
 }

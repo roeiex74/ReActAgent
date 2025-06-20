@@ -1,5 +1,4 @@
 import os
-import json
 
 
 class InternalState:
@@ -60,25 +59,59 @@ class InternalState:
             tool_name == name and args == a for name, a in self.tool_history
         )
 
-    # --- Reflection logging ---
-    def add_reflection(self, text: str, log: bool = True):
-        self.reflection_log.append(text)
+    # --- Observation logging ---
+    def add_observation(self, tool_name: str, result: str, log: bool = True):
+        obs_msg = f"Observation: The tool `{tool_name}` returned:\n{result}"
+        self.messages.append({"role": "assistant", "content": obs_msg})
         if log:
-            self.log(f"[Reflection] {text}")
+            self.log(obs_msg)
+
+    # --- Reflection logging ---
+    def add_reflection(self, text: str):
+        self.reflection_log.append(text)
+        self.log(f"[Reflection] {text}")
         self.messages.append(
             {"role": "assistant", "content": f"Reflection: {text}"}
         )
 
-    # --- Error logging ---
-    def log_error(self, tool_name: str, error: str, input_args: dict):
-        self.error_log.append(
-            {"tool": tool_name, "error": error, "args": input_args}
+    def reflect_on_tool_error(
+        self,
+        tool_name: str,
+        error_msg: str,
+        custom_reflection: str = None,
+        input_args: dict = None,
+    ):
+        self.log_error(tool_name, error_msg, input_args or {})
+        self.add_observation(tool_name, f"Error:\n```{error_msg}```")
+        reflection = (
+            custom_reflection
+            if custom_reflection
+            else f"The tool `{tool_name}` failed. I should consider modifying the inputs, retrying, or trying a different tool."
         )
-        self.log(f"[Error] {tool_name} failed: {error}")
+        self.add_reflection(reflection)
 
     # --- Final answer management ---
     def register_final_answer(self, answer_text: str):
         self.done = True
         self.final_answer = answer_text
         self.messages.append({"role": "assistant", "content": answer_text})
-        self.log(f"{answer_text}")
+
+    def log_error(self, tool_name: str, error: str, input_args: dict):
+        self.error_log.append(
+            {"tool": tool_name, "error": error, "args": input_args}
+        )
+        self.log(f"[Error] {tool_name} failed: {error}")
+
+    # --- ReAct next step priming ---
+    def add_next_step_prompt(self):
+        self.messages.append(
+            {
+                "role": "assistant",
+                "content": (
+                    "Given the above observation and prior steps, think carefully about the next action.\n"
+                    "If you have completed the task and all required information has been gathered, produce your final answer with 'Final Answer: ...'.\n"
+                    "Otherwise, explain your reasoning and choose the next appropriate tool or step.\n"
+                    "If you feel you cannot solve the task with the tools available to you, or that an error is preventing you from solving the task and you cannot fix it, respond with 'Final Answer: I cannot solve the task with the tools available to me.'"
+                ),
+            }
+        )

@@ -5,8 +5,7 @@ from openai import AzureOpenAI
 import os
 import subprocess
 from internal_state import InternalState
-from tools.online_search_tool import internet_search_attribute
-from tools.write_file_tool import write_file
+from tools.tool_dispatch import tool_dispatch
 
 # Load environment variables from .env
 load_dotenv()
@@ -57,7 +56,6 @@ tools = [
             },
         },
     },
-    # Inside tool_schemas list
     {
         "type": "function",
         "function": {
@@ -79,99 +77,95 @@ tools = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "extract_entities_from_file",
+            "description": "Extracts entities of a given type (like city, person) from a text file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_name": {
+                        "type": "string",
+                        "description": "The path to the text file.",
+                    },
+                    "entity_type": {
+                        "type": "string",
+                        "description": "Type of entity to extract (e.g., city, person, organization).",
+                    },
+                },
+                "required": ["file_name", "entity_type"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gen_plot_prog",
+            "description": "Generates a Python plotting program based on a natural language request. The code will read from a CSV file and save the resulting plot to a .png file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "plot_request": {
+                        "type": "string",
+                        "description": "A description of the plot to generate, like 'plot average grade by year'",
+                    },
+                    "input_file": {
+                        "type": "string",
+                        "description": "Path to the input CSV file",
+                    },
+                    "columns": {
+                        "type": "string",
+                        "description": "Comma-separated list of columns available in the CSV",
+                    },
+                    "gen_output_program_fn": {
+                        "type": "string",
+                        "description": "Filename where the generated Python script should be written",
+                    },
+                    "output_png": {
+                        "type": "string",
+                        "description": "Filename for the resulting plot image",
+                    },
+                },
+                "required": [
+                    "plot_request",
+                    "input_file",
+                    "columns",
+                    "gen_output_program_fn",
+                    "output_png",
+                ],
+            },
+        },
+    },
 ]
 
 
 # Tool execution function
-def execute_tool(tool_name: str, **kwargs):
-    """Execute the specified tool with given arguments - always returns a string"""
+def execute_tool(tool_name: str, **kwargs) -> str:
+    """
+    Executes the specified tool function with arguments.
+    All tools must return a str (JSON-formatted if structured).
+    """
     try:
-        if tool_name == "online_search":
-            # Validate required parameters
-            an_entity = kwargs.get("an_entity")
-            an_attribute = kwargs.get("an_attribute")
-
-            if (
-                not an_entity
-                or not isinstance(an_entity, str)
-                or not an_entity.strip()
-            ):
-                return json.dumps(
-                    {
-                        "error": "Invalid or missing 'an_entity' parameter",
-                        "received": an_entity,
-                        "tool": tool_name,
-                    }
-                )
-
-            if (
-                not an_attribute
-                or not isinstance(an_attribute, str)
-                or not an_attribute.strip()
-            ):
-                return json.dumps(
-                    {
-                        "error": "Invalid or missing 'an_attribute' parameter",
-                        "received": an_attribute,
-                        "tool": tool_name,
-                    }
-                )
-
-            print(
-                f"[TOOL] Executing {tool_name} for entity: '{an_entity}', attribute: '{an_attribute}'"
+        tool_func = tool_dispatch.get(tool_name)
+        if not tool_func:
+            return json.dumps(
+                {
+                    "error": f"Unknown tool: {tool_name}",
+                    "available_tools": list(tool_dispatch.keys()),
+                }
             )
 
-            try:
-                result = internet_search_attribute(
-                    an_entity=an_entity,
-                    an_attribute=an_attribute,
-                    max_results=kwargs.get("max_retries", 3),
-                )
-
-                # Ensure result is a valid string
-                if not isinstance(result, str):
-                    return json.dumps(
-                        {
-                            "error": "Tool returned invalid response type",
-                            "expected": "string",
-                            "received": type(result).__name__,
-                            "tool": tool_name,
-                        }
-                    )
-
-                return result
-
-            except Exception as tool_error:
-                return json.dumps(
-                    {
-                        "error": f"Tool execution failed: {str(tool_error)}",
-                        "tool": tool_name,
-                        "entity": an_entity,
-                        "attribute": an_attribute,
-                    }
-                )
-        elif tool_name == "write_file":
-            file_content = kwargs.get("file_content")
-            fn = kwargs.get("fn")
-            return write_file(file_content, fn)
-        else:
-            error_response = {
-                "error": f"Unknown tool: {tool_name}",
-                "available_tools": ["online_search"],
-                "received_tool": tool_name,
-            }
-            print(f"[TOOL ERROR] {error_response['error']}")
-            return json.dumps(error_response)
+        return tool_func(**kwargs)
 
     except Exception as e:
-        # This should never happen, but just in case
-        error_response = {
-            "error": f"Critical error in execute_tool: {str(e)}",
-            "tool": tool_name,
-            "parameters": kwargs,
-        }
-        print(f"[CRITICAL ERROR] {error_response['error']}")
-        return json.dumps(error_response)
+        return json.dumps(
+            {
+                "error": f"Critical error in execute_tool: {str(e)}",
+                "tool": tool_name,
+                "parameters": kwargs,
+            }
+        )
 
 
 def analyze_input_file(file_name: str):
@@ -304,19 +298,10 @@ if __name__ == "__main__":
         try:
             print("Calling LLM for next tool to invoke")
             if state.llm_calls > 0:
-                state.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": (
-                            "Given the above observation and prior steps, think carefully about the next action.\n"
-                            "If you have completed the task and all required information has been gathered, produce your final answer with 'Final Answer: ...'.\n"
-                            "Otherwise, explain your reasoning and choose the next appropriate tool or step."
-                        ),
-                    }
-                )
+                state.add_next_step_prompt()
 
+            # TODO - Wrap costs and LLM call in a loop
             state.register_llm_call()
-
             # Debug conversation state before API call
             debug_conversation_state(state.messages, "BEFORE API CALL")
 
@@ -354,7 +339,7 @@ if __name__ == "__main__":
                         # Check for redundant calls
                         if state.already_called_tool(func_name, args):
                             print(
-                                f"🔄 REDUNDANT CALL DETECTED for {func_name}"
+                                f"🔄 REDUNDANT CALL DETECTED for {func_name} with same args {args}"
                             )
 
                             # Add tool response for skipped call with explicit debugging
@@ -507,7 +492,7 @@ if __name__ == "__main__":
                     "Final Answer:"
                 ):
                     state.register_final_answer(msg.content)
-                    print(f"Final answer received: {msg.content}")
+
                 else:
                     # Handle other text responses
                     state.add_reflection(
