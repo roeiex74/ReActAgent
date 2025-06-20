@@ -1,7 +1,9 @@
+from typing import Optional
 import requests
 import os
 import json
 from openai_client import client, MODEL_4o
+from tools.tool_manager import ToolManager
 
 
 def bing_search_contexts(query: str, max_results: int = 3):
@@ -33,9 +35,20 @@ def bing_search_contexts(query: str, max_results: int = 3):
 
 
 def internet_search_attribute(
-    an_entity: str, an_attribute: str, max_results: int = 3
+    an_entity: str, an_attribute: str, max_results: int = 3,tool_manager: Optional[ToolManager] = None
 ) -> str:
     query = f"{an_entity} {an_attribute}"
+
+    if tool_manager:
+        if not tool_manager.can_call_tool():
+            return json.dumps({"error": "Tool usage limit exceeded"})
+        tool_manager.register_tool_call("internet_search_attribute")
+
+        if not tool_manager.can_call_llm():
+            return json.dumps({"error": "LLM usage limit exceeded"})
+        tool_manager.register_llm_call()
+
+
     try:
         snippets = bing_search_contexts(query, max_results)
 

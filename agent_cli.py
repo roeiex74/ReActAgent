@@ -6,6 +6,7 @@ import os
 import subprocess
 from internal_state import InternalState
 from tools.tool_dispatch import tool_dispatch
+from tools.tool_manager import ToolManager
 
 # Load environment variables from .env
 load_dotenv()
@@ -27,6 +28,8 @@ client = AzureOpenAI(
 
 # Agent Internal State
 state = InternalState()
+
+tool_manager = ToolManager()
 
 # Agent Tools
 tools = [
@@ -155,6 +158,9 @@ def execute_tool(tool_name: str, **kwargs) -> str:
                     "available_tools": list(tool_dispatch.keys()),
                 }
             )
+        
+        if "tool_manager" in tool_func.__code__.co_varnames:
+            kwargs["tool_manager"] = tool_manager
 
         return tool_func(**kwargs)
 
@@ -390,6 +396,7 @@ if __name__ == "__main__":
 
                         # Execute the tool with comprehensive error handling
                         try:
+
                             result = execute_tool(func_name, **args)
 
                             # Ensure result is a string

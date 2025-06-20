@@ -1,6 +1,17 @@
+from typing import Optional
 from openai_client import client, MODEL_4o
+from tools.tool_manager import ToolManager
 
-def debug_and_regenerate_prog(program_fn: str, errors: str) -> str:
+def debug_and_regenerate_prog(program_fn: str, errors: str, tool_manager: Optional[ToolManager] = None) -> str:
+
+    if tool_manager:
+        tool_manager.register_tool_call("debug_and_regenerate_prog")
+        if not tool_manager.can_call_llm():
+            return "LLM call limit exceeded"
+
+        tool_manager.register_llm_call()
+
+
     print("**Entering tool debug_and_regenerate_prog**")
     print(f"Parameter program_fn = {program_fn}")
     print(f"Parameter errors = {errors[:50]}...")

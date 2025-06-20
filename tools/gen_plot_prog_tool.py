@@ -1,6 +1,8 @@
 import json
 import os
+from typing import Optional
 from openai_client import client, MODEL_4o
+from tools.tool_manager import ToolManager
 
 def gen_plot_prog(
     plot_request: str,
@@ -8,6 +10,7 @@ def gen_plot_prog(
     columns: str,
     gen_output_program_fn: str,
     output_png: str,
+    tool_manager: Optional[ToolManager] = None
 ) -> str:
     """
     Generates a Python plotting script from a natural language request.
@@ -22,6 +25,15 @@ def gen_plot_prog(
     Returns:
         str: The full code as a string (also written to gen_output_program_fn)
     """
+
+    if tool_manager:
+        if not tool_manager.can_call_tool():
+            return json.dumps({"error": "Tool usage limit exceeded"})
+        tool_manager.register_tool_call("gen_plot_prog")
+
+        if not tool_manager.can_call_llm():
+            return json.dumps({"error": "LLM usage limit exceeded"})
+        tool_manager.register_llm_call()
 
     try:
         system_prompt = (

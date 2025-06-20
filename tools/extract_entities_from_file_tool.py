@@ -1,9 +1,11 @@
 import os
 import json
+from typing import Optional
 from openai_client import client, MODEL_4o
+from tools.tool_manager import ToolManager
 
 
-def extract_entities_from_file(file_name: str, entity_type: str) -> str:
+def extract_entities_from_file(file_name: str, entity_type: str,tool_manager: Optional[ToolManager] = None) -> str:
     """
     Extracts entities of a specified type from a text file using the LLM.
 
@@ -14,6 +16,17 @@ def extract_entities_from_file(file_name: str, entity_type: str) -> str:
     Returns:
         str: JSON-formatted list of entities: '["Entity1", "Entity2", ...]'
     """
+
+
+    if tool_manager:
+        if not tool_manager.can_call_tool():
+            return json.dumps({"error": "Tool usage limit exceeded", "entities": []})
+        tool_manager.register_tool_call("extract_entities_from_file")
+
+        if not tool_manager.can_call_llm():
+            return json.dumps({"error": "LLM usage limit exceeded", "entities": []})
+        tool_manager.register_llm_call()
+
     try:
         if not os.path.exists(file_name):
             return json.dumps(
