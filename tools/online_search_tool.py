@@ -1,9 +1,28 @@
-from typing import Optional
 import requests
 import os
+from openai import AzureOpenAI
 import json
-from openai_client import client, MODEL_4o
-from tools.tool_manager import ToolManager
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SERPER_API_KEY = os.getenv("SERPER_API_KEY")
+
+
+# Model and version
+MODEL_4o = os.getenv("MODEL_4o")
+AZURE_OPEN_VERSION_4o = os.getenv("AZURE_OPEN_VERSION_4o")
+
+# Read Azure credentials
+AZURE_OPENAI_API_KEY = os.getenv("CLASS_OPEN_API_KEY")
+AZURE_OPENAI_ENDPOINT = os.getenv("SUBSCRIPTION_OPENAI_ENDPOINT")
+
+# Initialize the OpenAI client
+client = AzureOpenAI(
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPEN_VERSION_4o,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+)
 
 
 def bing_search_contexts(query: str, max_results: int = 3):
@@ -35,20 +54,9 @@ def bing_search_contexts(query: str, max_results: int = 3):
 
 
 def internet_search_attribute(
-    an_entity: str, an_attribute: str, max_results: int = 3,tool_manager: Optional[ToolManager] = None
+    an_entity: str, an_attribute: str, max_results: int = 3
 ) -> str:
     query = f"{an_entity} {an_attribute}"
-
-    if tool_manager:
-        if not tool_manager.can_call_tool():
-            return json.dumps({"error": "Tool usage limit exceeded"})
-        tool_manager.register_tool_call("internet_search_attribute")
-
-        if not tool_manager.can_call_llm():
-            return json.dumps({"error": "LLM usage limit exceeded"})
-        tool_manager.register_llm_call()
-
-
     try:
         snippets = bing_search_contexts(query, max_results)
 

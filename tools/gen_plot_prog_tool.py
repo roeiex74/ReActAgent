@@ -1,8 +1,7 @@
 import json
-import os
 from typing import Optional
-from openai_client import client, MODEL_4o
-from tools.tool_manager import ToolManager
+from tools.openai_client import client, MODEL_4o
+
 
 def gen_plot_prog(
     plot_request: str,
@@ -10,7 +9,6 @@ def gen_plot_prog(
     columns: str,
     gen_output_program_fn: str,
     output_png: str,
-    tool_manager: Optional[ToolManager] = None
 ) -> str:
     """
     Generates a Python plotting script from a natural language request.
@@ -26,15 +24,6 @@ def gen_plot_prog(
         str: The full code as a string (also written to gen_output_program_fn)
     """
 
-    if tool_manager:
-        if not tool_manager.can_call_tool():
-            return json.dumps({"error": "Tool usage limit exceeded"})
-        tool_manager.register_tool_call("gen_plot_prog")
-
-        if not tool_manager.can_call_llm():
-            return json.dumps({"error": "LLM usage limit exceeded"})
-        tool_manager.register_llm_call()
-
     try:
         system_prompt = (
             "You are a Python code generator that writes plotting code using matplotlib and pandas. You are an expert in data visualization and analysis.\n"
@@ -46,6 +35,7 @@ def gen_plot_prog(
             f"- Use plt.savefig('{output_png}') instead to save and exit cleanly.\n"
             "- Return only the code."
             "- The code should be able to handle exceptions and errors gracefully."
+            "- The provided error message MUST be elaborated and helpful to be able to debug the program later and fix it if needed."
             "- Analyze the plot request, formalize it in data analysis terms, and continue the task."
             "The script should print ONLY the Python code to standard output, without any introductory text, explanations, or markdown formatting like ```python ... ```."
             "NOTES: \nCSV File contains headers, and the first row is the header row. The header row is the column names. The data starts from the second row.\nThe Script should be able to provide a status response to the user in case of a error or exception or a success - in the following JSON format: {status: 'success' | 'error', message: 'success message' | 'error message/ exception message'}"

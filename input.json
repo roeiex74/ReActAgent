@@ -2,8 +2,12 @@
   "query_name": "query1.txt",
   "file_resources": [
     {
-      "file_name": "students.txt",
-      "description": "a text file containing information on some of the students, including his or her aspirations, favorite city, and hobbies."
+      "file_name": "whs_2024.csv",
+      "description": "A csv file describing the world happiness scores for many countries. the first line contains the columns (field names) of each following row. They are: 'Year','Rank','Country name','Ladder score','upperwhisker','lowerwhisker','Explained by: Log GDP per capita','Explained by: Social support','Explained by: Healthy life expectancy','Explained by: Freedom to make life choices','Explained by: Generosity','Explained by: Perceptions of corruption','Dystopia + residual'."
+    },
+    {
+      "file_name": "best-countries-raise-families.txt",
+      "description": "This file discusses the top countries in which to raise families."
     }
   ]
 }

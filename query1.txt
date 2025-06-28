@@ -1,4 +1,8 @@
-Find the current population of a city that is mentioned in the
-students.txt file that begins with the letter 'H’. Write the result as a
-JSON object with the fields 'city' and 'population', whose value is a
-number. The JSON should be stored in the file "query1.json".
+Find those countries rated as one of the top 7 countries to raise families using the appropriate file resource. We'll call
+them the 7C countries. Store the 7C countries in "top-7.json" where the json contains one field, "top-7", an
+array giving the names of the 7 countries.
+Next, generate a program, using the appropriate file resource, to plot the average "Healthy life expectancy" for all
+countries (using "Country name" column), the average "Healthy life expectancy" for the 7C countries, and the "Healthy
+life expectancy" for the country that has the highest "Healthy life expectancy" score. In the plot state the name of the
+country that has the highest "Healthy life expectancy" score, and the values of the averages.
+Execute the program and generate the plot.

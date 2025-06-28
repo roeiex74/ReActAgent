@@ -140,6 +140,62 @@ tools = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "debug_and_regenerate_prog",
+            "description": "Debugs and regenerates a Python program based on an error message.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "program_fn": {
+                        "type": "string",
+                        "description": "The path to the Python program file to debug.",
+                    },
+                    "errors": {
+                        "type": "string",
+                        "description": "The error message to of the program execution to deubg.",
+                    },
+                    "plot_request": {
+                        "type": "string",
+                        "description": "The plot request that the program is meant to provide a plot for.",
+                    },
+                    "data_file": {
+                        "type": "string",
+                        "description": "The data file that the program uses to generate the plot.",
+                    },
+                    "columns": {
+                        "type": "string",
+                        "description": "The columns of the original data file that the program uses to generate the plot. You can use the file description to find the columns.",
+                    },
+                },
+                "required": [
+                    "program_fn",
+                    "errors",
+                    "plot_request",
+                    "data_file",
+                    "columns",
+                ],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_Python_prog",
+            "description": "Executes a Python program and returns the result.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "program_fn": {
+                        "type": "string",
+                        "description": "The path to the Python program file to execute.",
+                    },
+                },
+                "required": ["program_fn"],
+            },
+        },
+    },
 ]
 
 
@@ -158,7 +214,7 @@ def execute_tool(tool_name: str, **kwargs) -> str:
                     "available_tools": list(tool_dispatch.keys()),
                 }
             )
-        
+
         if "tool_manager" in tool_func.__code__.co_varnames:
             kwargs["tool_manager"] = tool_manager
 
@@ -179,23 +235,20 @@ def analyze_input_file(file_name: str):
         content = json.load(f)  # Parse JSON directly from file object
     query_file_name = content["query_name"]
     state.set_query_data(query_file_name)
-    state.add_reflection(
-        f"Extracted query file data: {query_file_name}", log=False
-    )
+    state.add_reflection(f"Extracted query file data: {query_file_name}")
     for obj in content["file_resources"]:
         file_name = obj["file_name"]
         description = obj["description"]
         state.file_resources[file_name] = description
         state.add_reflection(
             f"Analyzed file {file_name} with description: {description}",
-            log=False,
         )
     file_reflection = (
         f"Analyzed {len(content['file_resources'])} files"
         if len(content["file_resources"]) > 0
         else "No resource file availlable for usage."
     )
-    state.add_reflection(file_reflection, log=False)
+    state.add_reflection(file_reflection)
 
 
 initial_system_prompt = """You are a ReAct-style agent. You solve queries by interleaving three steps:

@@ -1,0 +1,36 @@
+Rank,Country
+1,Iceland
+2,Norway
+3,Sweden
+4,Finland
+5,Netherlands
+6,Denmark
+7,Switzerland
+8,Austria
+9,Australia
+10,New Zealand
+11,Luxemburg
+12,Germany
+13,Canada
+14,Slovenia
+15,Belgium
+16,Ireland
+17,France
+18,Portugal
+19,Spain
+20,Estonia
+21,Latvia
+22,Lithuania
+23,Czech Republic
+24,Italy
+25,Poland
+26,United Kingdom
+27,Hungary
+28,United States
+29,Slovakia
+30,Chile
+31,Japan
+32,South Korea
+33,Mexico
+34,Greece
+35,Turkey

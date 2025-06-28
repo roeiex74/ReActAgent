@@ -3,6 +3,8 @@ from tools.online_search_tool import internet_search_attribute
 from tools.write_file_tool import write_file
 from tools.extract_entities_from_file_tool import extract_entities_from_file
 from tools.gen_plot_prog_tool import gen_plot_prog
+from tools.debug_and_regenerate_prog import debug_and_regenerate_prog
+from tools.execute_Python_prog import execute_Python_prog
 
 
 def handle_online_search(**kwargs):
@@ -98,6 +100,47 @@ def handle_gen_plot_prog(**kwargs):
     return gen_plot_prog(
         plot_request, input_file, columns, gen_output_program_fn, output_png
     )
+
+
+def handle_execute_Python_prog(**kwargs):
+    program_fn = kwargs.get("program_fn")
+
+    if not program_fn:
+        return _error("Missing required parameter", tool="execute_Python_prog")
+
+    return execute_Python_prog(program_fn)
+
+
+def handle_debug_and_regenerate_prog(**kwargs):
+    program_fn = kwargs.get("program_fn")
+    errors = kwargs.get("errors")
+    plot_request = kwargs.get("plot_request")
+    data_file = kwargs.get("data_file")
+    columns = kwargs.get("columns")
+
+    if (
+        not program_fn
+        or not errors
+        or not plot_request
+        or not data_file
+        or not columns
+    ):
+        return _error(
+            "Missing required parameter", tool="debug_and_regenerate_prog"
+        )
+
+    return debug_and_regenerate_prog(
+        program_fn, errors, plot_request, data_file, columns
+    )
+
+
+def handle_execute_Python_prog(**kwargs):
+    program_fn = kwargs.get("program_fn")
+
+    if not program_fn:
+        return _error("Missing required parameter", tool="execute_Python_prog")
+
+    return execute_Python_prog(program_fn)
 
 
 def _error(msg, tool, **extra):

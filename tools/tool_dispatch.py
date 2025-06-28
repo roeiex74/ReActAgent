@@ -3,6 +3,8 @@ from tools.tool_handlers import (
     handle_write_file,
     handle_extract_entities_from_file,
     handle_gen_plot_prog,
+    handle_debug_and_regenerate_prog,
+    handle_execute_Python_prog,
 )
 
 tool_dispatch = {
@@ -10,4 +12,6 @@ tool_dispatch = {
     "write_file": handle_write_file,
     "extract_entities_from_file": handle_extract_entities_from_file,
     "gen_plot_prog": handle_gen_plot_prog,
+    "debug_and_regenerate_prog": handle_debug_and_regenerate_prog,
+    "execute_Python_prog": handle_execute_Python_prog,
 }

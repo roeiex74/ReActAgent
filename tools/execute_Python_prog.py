@@ -1,30 +1,175 @@
 import subprocess
+import json
+import os
 from typing import Optional
-from tool_manager import ToolManager
 
-def execute_Python_prog(program_fn: str, tool_manager: Optional[ToolManager] = None) -> str:
-    print("**Entering tool execute_Python_prog**")
-    print(f"Parameter program_fn = {program_fn}")
 
-    
-    if tool_manager:
-        if not tool_manager.can_call_tool():
-            return "Tool usage limit exceeded"
-        tool_manager.register_tool_call("execute_Python_prog")
+def execute_Python_prog(program_fn: str) -> str:
+    """
+    Execute a Python program file and return structured results.
+
+    Args:
+        program_fn: Path to the Python file to execute
+        tool_manager: Optional tool manager for usage tracking
+
+    Returns:
+        str: JSON string containing execution results with structure:
+        {
+            "status": "success|error|limit_exceeded",
+            "program_file": str,
+            "stdout": str,
+            "stderr": str,
+            "return_code": int,
+            "execution_time": float,
+            "error": str (only if error occurred)
+        }
+    """
+    # Input validation
+    if not program_fn or not isinstance(program_fn, str):
+        return json.dumps(
+            {
+                "status": "error",
+                "program_file": program_fn,
+                "error": "Invalid program_fn: must be a non-empty string",
+                "stdout": "",
+                "stderr": "",
+                "return_code": -1,
+                "execution_time": 0.0,
+            }
+        )
+
+    # Normalize the file path
+    program_fn = program_fn.strip()
+
+    # Check tool manager limits
+    # if tool_manager:
+    #     if not tool_manager.can_call_tool():
+    #         return json.dumps(
+    #             {
+    #                 "status": "limit_exceeded",
+    #                 "program_file": program_fn,
+    #                 "error": "Tool usage limit exceeded",
+    #                 "stdout": "",
+    #                 "stderr": "",
+    #                 "return_code": -1,
+    #                 "execution_time": 0.0,
+    #             }
+    #         )
+    #     tool_manager.register_tool_call("execute_Python_prog")
+
+    # Check if file exists
+    if not os.path.exists(program_fn):
+        return json.dumps(
+            {
+                "status": "error",
+                "program_file": program_fn,
+                "error": f"File not found: {program_fn}",
+                "stdout": "",
+                "stderr": "",
+                "return_code": -1,
+                "execution_time": 0.0,
+            }
+        )
+
+    # Check if file has .py extension
+    if not program_fn.endswith(".py"):
+        return json.dumps(
+            {
+                "status": "error",
+                "program_file": program_fn,
+                "error": f"Invalid file type: {program_fn}. Expected .py file",
+                "stdout": "",
+                "stderr": "",
+                "return_code": -1,
+                "execution_time": 0.0,
+            }
+        )
 
     try:
+        import time
+
+        start_time = time.time()
+
+        # Execute the Python program
         result = subprocess.run(
-            ["python", program_fn],
-            capture_output=True,
-            text=True,
-            timeout=10  # Optional: avoid infinite loops
+            ["python", program_fn], capture_output=True, text=True, timeout=30
         )
+
+        execution_time = time.time() - start_time
+
+        # Prepare response based on execution result
         if result.returncode == 0:
-            print("**Exiting tool execute_Python_prog**")
-            return 'Program executed successfully'
+            return json.dumps(
+                {
+                    "status": "success",
+                    "program_file": program_fn,
+                    "stdout": result.stdout.strip(),
+                    "stderr": result.stderr.strip(),
+                    "return_code": result.returncode,
+                    "execution_time": round(execution_time, 3),
+                }
+            )
         else:
-            print("**Exiting tool execute_Python_prog**")
-            return result.stderr.strip()
+            return json.dumps(
+                {
+                    "status": "error",
+                    "program_file": program_fn,
+                    "error": f"Program execution failed with return code {result.returncode}",
+                    "stdout": result.stdout.strip(),
+                    "stderr": result.stderr.strip(),
+                    "return_code": result.returncode,
+                    "execution_time": round(execution_time, 3),
+                }
+            )
+
+    except subprocess.TimeoutExpired:
+        return json.dumps(
+            {
+                "status": "error",
+                "program_file": program_fn,
+                "error": "Program execution timed out (30 seconds limit)",
+                "stdout": "",
+                "stderr": "",
+                "return_code": -1,
+                "execution_time": 30.0,
+            }
+        )
+
+    except FileNotFoundError:
+        return json.dumps(
+            {
+                "status": "error",
+                "program_file": program_fn,
+                "error": "Python interpreter not found. Ensure Python is installed and in PATH",
+                "stdout": "",
+                "stderr": "",
+                "return_code": -1,
+                "execution_time": 0.0,
+            }
+        )
+
+    except PermissionError:
+        return json.dumps(
+            {
+                "status": "error",
+                "program_file": program_fn,
+                "error": f"Permission denied: Cannot execute {program_fn}",
+                "stdout": "",
+                "stderr": "",
+                "return_code": -1,
+                "execution_time": 0.0,
+            }
+        )
+
     except Exception as e:
-        print("**Exiting tool execute_Python_prog**")
-        return str(e)
+        return json.dumps(
+            {
+                "status": "error",
+                "program_file": program_fn,
+                "error": f"Unexpected error during execution: {str(e)}",
+                "stdout": "",
+                "stderr": "",
+                "return_code": -1,
+                "execution_time": 0.0,
+            }
+        )
