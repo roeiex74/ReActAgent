@@ -87,18 +87,24 @@ def handle_gen_plot_prog(**kwargs):
     columns = kwargs.get("columns")
     gen_output_program_fn = kwargs.get("gen_output_program_fn")
     output_png = kwargs.get("output_png")
-
+    knowledge_base = kwargs.get("knowledge_base")
     if (
         not plot_request
         or not input_file
         or not columns
         or not gen_output_program_fn
         or not output_png
+        or not knowledge_base
     ):
         return _error("Missing required parameter", tool="gen_plot_prog")
 
     return gen_plot_prog(
-        plot_request, input_file, columns, gen_output_program_fn, output_png
+        plot_request,
+        input_file,
+        columns,
+        gen_output_program_fn,
+        output_png,
+        knowledge_base,
     )
 
 

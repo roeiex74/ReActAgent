@@ -1,4 +1,5 @@
 import os
+import json
 
 
 class InternalState:
@@ -20,6 +21,7 @@ class InternalState:
         self.reflection_log = []  # list of reflections (strings)
         self.error_log = []  # list of error dicts
         self.state_log = {}  # milestone tracker
+        self.knowledge_base = {}  # knowledge base
 
     def set_query_data(self, query_file_name: str):
         self.query_name = os.path.splitext(os.path.basename(query_file_name))[
@@ -33,7 +35,7 @@ class InternalState:
         if self.log_path:
             with open(self.log_path, "a") as f:
                 f.write(text + "\n")
-        print(text)
+        # print(text)
 
     def can_continue(self):
         return (
@@ -104,14 +106,151 @@ class InternalState:
 
     # --- ReAct next step priming ---
     def add_next_step_prompt(self):
-        self.messages.append(
-            {
-                "role": "assistant",
-                "content": (
-                    "Given the above observation and prior steps, think carefully about the next action.\n"
-                    "If you have completed the task and all required information has been gathered, produce your final answer with 'Final Answer: ...'.\n"
-                    "Otherwise, explain your reasoning and choose the next appropriate tool or step.\n"
-                    "If you feel you cannot solve the task with the tools available to you, or that an error is preventing you from solving the task and you cannot fix it, respond with 'Final Answer: I cannot solve the task with the tools available to me.'"
-                ),
-            }
+
+        # Get recent tool results from reflections
+        recent_tool_reflections = [
+            reflection
+            for reflection in self.reflection_log[-5:]  # Last 5 reflections
+            if any(
+                word in reflection.lower()
+                for word in ["tool", "executed", "failed", "skipped"]
+            )
+        ]
+
+        # # Build the next step prompt content
+        # knowledge_info = ""
+        # if self.knowledge_base:
+        #     knowledge_info = f"\n\nKNOWLEDGE BASE (extracted data):\n{json.dumps(self.knowledge_base, indent=2)}"
+
+        # tool_results_info = ""
+        # if recent_tool_reflections:
+        #     tool_results_info = f"\n\nRECENT TOOL RESULTS:\n" + "\n".join(
+        #         [f"- {r}" for r in recent_tool_reflections]
+        #     )
+
+        # prompt_content = (
+        #     f"{knowledge_info}{tool_results_info}\n"
+        #     "Given the above observation and prior steps, think carefully about the next action.\n"
+        #     "You have access to the given knowledge base and recent tool results if needed and you can extract information from them.\n"
+        #     "If you have completed the task and all required information has been gathered, produce your final answer with 'Final Answer: ...'.\n"
+        #     "Otherwise, explain your reasoning and choose the next appropriate tool or step.\n"
+        #     "In case you encounter an error, understand the error and try to fix it using the knowledge base,given tools and reasoning logic.\n"
+        #     "If you feel you cannot solve the task with the tools available to you, or that an error is preventing you from solving the task and you cannot fix it, respond with 'Final Answer: I cannot solve the task with the tools available to me.'"
+        # )
+
+        # self.messages.append(
+        #     {
+        #         "role": "assistant",
+        #         "content": prompt_content,
+        #     }
+        # )
+        # --- Knowledge Summary ---
+
+        if self.knowledge_base:
+            knowledge_summary = "\n".join(
+                f"- {k}: {v}" for k, v in self.knowledge_base.items()
+            )
+        else:
+            knowledge_summary = "None"
+
+        # --- Recent Tool Results ---
+        if recent_tool_reflections:
+            tool_summary = "\n".join(f"- {r}" for r in recent_tool_reflections)
+        else:
+            tool_summary = "None"
+
+        # --- Available File Resources ---
+        if self.file_resources:
+            file_summary = "\n".join(
+                f"- {fn}: {desc}" for fn, desc in self.file_resources.items()
+            )
+        else:
+            file_summary = "None"
+
+        # --- Final Prompt Assembly ---
+        prompt_content = (
+            f"=== KNOWLEDGE BASE ===\n{knowledge_summary}\n\n"
+            f"=== RECENT TOOL RESULTS ===\n{tool_summary}\n\n"
+            f"=== AVAILABLE FILE RESOURCES ===\n{file_summary}\n\n"
+            "You are solving this task step by step using the available tools.\n"
+            "Leverage knowledge base and file resources to avoid redundant actions.\n"
+            "Use recent tool results to guide your decisions.\n"
+            "\n"
+            "If a tool result indicated an error, attempt to correct the issue by:\n"
+            "- Adjusting tool inputs using known facts.\n"
+            "- Reusing available file resources.\n"
+            "- Exploring alternative tools logically.\n"
+            "- Using a debug and regenerate tool to debug the error and reproduce a corrected program in case of python program execution.\n"
+            "If the task is complete, respond with 'Final Answer: ...'.\n"
+            "If you are blocked and cannot proceed, respond with 'Final Answer: I cannot solve the task with the tools available to me.'\n"
+            "Otherwise, explain your reasoning step by step and choose the next appropriate tool or step."
         )
+
+        self.messages.append({"role": "assistant", "content": prompt_content})
+
+    def update_knowledge(self, key, value):
+        self.knowledge_base[key] = value
+        self.add_reflection(f"Updated knowledge: {key} = {value}")
+
+    def get_knowledge(self, key):
+        return self.knowledge_base.get(key)
+
+    def get_tool_execution_history(self):
+        """
+        Get a formatted history of all tool executions from reflections and knowledge base.
+
+        Returns:
+            dict: Organized tool execution history
+        """
+        history = {
+            "recent_tool_results": {},
+            "recent_tool_errors": {},
+            "tool_reflections": [],
+            "total_tool_calls": self.tool_calls,
+        }
+
+        # Get recent results and errors from knowledge base
+        for key, value in self.knowledge_base.items():
+            if key.startswith("last_result_"):
+                tool_name = key.replace("last_result_", "")
+                history["recent_tool_results"][tool_name] = value
+            elif key.startswith("last_error_"):
+                tool_name = key.replace("last_error_", "")
+                history["recent_tool_errors"][tool_name] = value
+
+        # Get tool-related reflections
+        history["tool_reflections"] = [
+            reflection
+            for reflection in self.reflection_log
+            if any(
+                word in reflection.lower()
+                for word in ["tool", "executed", "failed", "skipped"]
+            )
+        ]
+
+        return history
+
+    def get_latest_tool_result(self, tool_name: str):
+        """
+        Get the most recent result for a specific tool.
+
+        Args:
+            tool_name: Name of the tool
+
+        Returns:
+            dict or None: Latest result data or None if not found
+        """
+        result_key = f"last_result_{tool_name}"
+        error_key = f"last_error_{tool_name}"
+
+        # Check for recent result first
+        result = self.get_knowledge(result_key)
+        if result:
+            return {"type": "success", "data": result}
+
+        # Check for recent error
+        error = self.get_knowledge(error_key)
+        if error:
+            return {"type": "error", "data": error}
+
+        return None

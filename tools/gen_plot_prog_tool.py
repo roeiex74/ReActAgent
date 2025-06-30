@@ -9,6 +9,7 @@ def gen_plot_prog(
     columns: str,
     gen_output_program_fn: str,
     output_png: str,
+    knowledge_base: dict,
 ) -> str:
     """
     Generates a Python plotting script from a natural language request.
@@ -19,7 +20,7 @@ def gen_plot_prog(
         columns: Comma-separated list of column names.
         gen_output_program_fn: Path to write the generated Python script.
         output_png: Path to save the resulting .png plot.
-
+        knowledge_base: data Knowledge base to use with the plot request and code generation.
     Returns:
         str: The full code as a string (also written to gen_output_program_fn)
     """
@@ -41,7 +42,7 @@ def gen_plot_prog(
             "NOTES: \nCSV File contains headers, and the first row is the header row. The header row is the column names. The data starts from the second row.\nThe Script should be able to provide a status response to the user in case of a error or exception or a success - in the following JSON format: {status: 'success' | 'error', message: 'success message' | 'error message/ exception message'}"
         )
 
-        user_prompt = f"Plot Request: {plot_request}"
+        user_prompt = f"Plot Request: {plot_request}\nKnowledge Base(Ignore if empty): {knowledge_base}"
 
         response = client.chat.completions.create(
             model=MODEL_4o,
@@ -66,7 +67,12 @@ def gen_plot_prog(
         with open(gen_output_program_fn, "w", encoding="utf-8") as f:
             f.write(code)
 
-        return code
+        return json.dumps(
+            {
+                "status": "success",
+                "output_file": gen_output_program_fn,
+            }
+        )
 
     except Exception as e:
         return json.dumps(
