@@ -1,3 +1,4 @@
+from internal_state import InternalState
 from tools.openai_client import client, MODEL_4o
 
 
@@ -7,6 +8,7 @@ def debug_and_regenerate_prog(
     plot_request: str,
     data_file: str,
     columns: str,
+    state: InternalState = None
 ) -> str:
 
     # if tool_manager:
@@ -81,6 +83,10 @@ def debug_and_regenerate_prog(
             ],
             temperature=0.2,
         )
+        if state:
+            if not state.can_call_llm():
+                return "LLM call limit exceeded"
+            state.register_llm_call()
 
         reflection = response.choices[0].message.content.strip()
 
@@ -110,6 +116,11 @@ def debug_and_regenerate_prog(
             ],
             temperature=0.2,
         )
+
+        if state:
+            if not state.can_call_llm():
+                return "LLM call limit exceeded"
+            state.register_llm_call()
 
         corrected_code = corrected_code.choices[0].message.content.strip()
         with open(program_fn, "w") as file:

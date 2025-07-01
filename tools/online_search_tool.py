@@ -4,6 +4,8 @@ from openai import AzureOpenAI
 import json
 from dotenv import load_dotenv
 
+from internal_state import InternalState
+
 load_dotenv()
 
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
@@ -54,7 +56,7 @@ def bing_search_contexts(query: str, max_results: int = 3):
 
 
 def internet_search_attribute(
-    an_entity: str, an_attribute: str, max_results: int = 3
+    an_entity: str, an_attribute: str, max_results: int = 3, state: InternalState = None
 ) -> str:
     query = f"{an_entity} {an_attribute}"
     try:
@@ -80,6 +82,11 @@ def internet_search_attribute(
         completion = client.chat.completions.create(
             model=MODEL_4o, messages=messages
         )
+
+        if state:
+            if not state.can_call_llm():
+                return "LLM call limit exceeded"
+            state.register_llm_call()
 
         return completion.choices[0].message.content
 

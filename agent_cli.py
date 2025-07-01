@@ -5,7 +5,6 @@ from openai import AzureOpenAI
 import os
 from internal_state import InternalState
 from tools.tool_dispatch import tool_dispatch
-from tools.tool_manager import ToolManager
 from helper_methods import *
 
 # Load environment variables from .env
@@ -28,8 +27,6 @@ client = AzureOpenAI(
 
 # Agent Internal State
 state = InternalState()
-
-tool_manager = ToolManager()
 
 # Agent Tools
 tools = [
@@ -218,9 +215,9 @@ def execute_tool(tool_name: str, **kwargs) -> str:
                     "available_tools": list(tool_dispatch.keys()),
                 }
             )
-
-        if "tool_manager" in tool_func.__code__.co_varnames:
-            kwargs["tool_manager"] = tool_manager
+        
+        if "state" in tool_func.__code__.co_varnames:
+            kwargs["state"] = state
 
         return tool_func(**kwargs)
 
