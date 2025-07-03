@@ -1,5 +1,4 @@
 import os
-import json
 
 
 class InternalState:
@@ -54,7 +53,7 @@ class InternalState:
         self.log(f"** Entering tool {tool_name} **")
 
     def exit_tool(self, tool_name: str):
-        self.log(f"** Exiting tool {tool_name} **")
+        self.log(f"** Leaving tool {tool_name} **")
 
     def already_called_tool(self, tool_name: str, args: dict):
         return any(
@@ -71,7 +70,7 @@ class InternalState:
     # --- Reflection logging ---
     def add_reflection(self, text: str):
         self.reflection_log.append(text)
-        self.log(f"[Reflection] {text}")
+        # self.log(f"[Reflection] {text}")
         self.messages.append(
             {"role": "assistant", "content": f"Reflection: {text}"}
         )
@@ -96,6 +95,7 @@ class InternalState:
     def register_final_answer(self, answer_text: str):
         self.done = True
         self.final_answer = answer_text
+        self.log(answer_text)
         self.messages.append({"role": "assistant", "content": answer_text})
 
     def log_error(self, tool_name: str, error: str, input_args: dict):
@@ -167,23 +167,32 @@ class InternalState:
         else:
             file_summary = "None"
 
+        # --- Tool Signature Reminder ---
+        tool_signature = (
+            "\n\n=== TOOL SIGNATURES (reminder) ===\n"
+            + """
+            - extract_entities_from_file(file_name: str, entity_type: str)
+            - internet_search_attribute(entity: str, attribute: str)
+            - gen_plot_prog(plot_request: str, input_file: str, columns: str, gen_output_program_fn: str, output_png: str, knowledge_base: dict)
+            - execute_Python_prog(program_fn: str)
+            - debug_and_regenerate_prog(program_fn: str, errors: str)
+            - write_file(file_content: str, fn: str)
+            """
+        )
+
         # --- Final Prompt Assembly ---
+        self.log("Calling LLM For next tool to invoke")
         prompt_content = (
             f"=== KNOWLEDGE BASE ===\n{knowledge_summary}\n\n"
             f"=== RECENT TOOL RESULTS ===\n{tool_summary}\n\n"
-            f"=== AVAILABLE FILE RESOURCES ===\n{file_summary}\n\n"
-            "You are solving this task step by step using the available tools.\n"
+            f"=== AVAILABLE FILE RESOURCES ===\n{file_summary}\n"
+            + tool_signature
+            + "\nYou are solving this task step by step using the available tools.\n"
             "Leverage knowledge base and file resources to avoid redundant actions.\n"
             "Use recent tool results to guide your decisions.\n"
-            "\n"
-            "If a tool result indicated an error, attempt to correct the issue by:\n"
-            "- Adjusting tool inputs using known facts.\n"
-            "- Reusing available file resources.\n"
-            "- Exploring alternative tools logically.\n"
-            "- Using a debug and regenerate tool to debug the error and reproduce a corrected program in case of python program execution.\n"
-            "If the task is complete, respond with 'Final Answer: ...'.\n"
-            "If you are blocked and cannot proceed, respond with 'Final Answer: I cannot solve the task with the tools available to me.'\n"
-            "Otherwise, explain your reasoning step by step and choose the next appropriate tool or step."
+            "If the task is complete, respond with 'Final response is = ...'.\n"
+            "If blocked, respond with 'Final response is = I cannot solve the task with the tools available to me.'\n"
+            "Otherwise, think step-by-step, then choose the next tool call **including all required parameters**."
         )
 
         self.messages.append({"role": "assistant", "content": prompt_content})

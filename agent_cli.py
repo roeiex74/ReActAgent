@@ -1,12 +1,12 @@
 from openai import AzureOpenAI
 from dotenv import load_dotenv
 import json
-from openai import AzureOpenAI
 import os
 from internal_state import InternalState
 from tools.tool_dispatch import tool_dispatch
 from tools.tool_manager import ToolManager
 from helper_methods import *
+from tools.openai_client import client
 
 # Load environment variables from .env
 load_dotenv()
@@ -20,11 +20,36 @@ AZURE_OPENAI_API_KEY = os.getenv("CLASS_OPEN_API_KEY")
 AZURE_OPENAI_ENDPOINT = os.getenv("SUBSCRIPTION_OPENAI_ENDPOINT")
 
 # Initialize the OpenAI client
-client = AzureOpenAI(
-    api_key=AZURE_OPENAI_API_KEY,
-    api_version=AZURE_OPEN_VERSION_4o,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-)
+# client = AzureOpenAI(
+#     api_key=AZURE_OPENAI_API_KEY,
+#     api_version=AZURE_OPEN_VERSION_4o,
+#     azure_endpoint=AZURE_OPENAI_ENDPOINT,
+# )
+
+
+def _check_azure_connection() -> None:
+    """Ping Azure OpenAI with a minimal request to verify credentials/connectivity."""
+    try:
+        test_msg = [{"role": "system", "content": "ping"}]
+        client.chat.completions.create(
+            model=MODEL_4o,
+            messages=test_msg,
+            max_tokens=1,
+        )
+        print("✅ Azure OpenAI connectivity verified.")
+    except Exception as conn_error:
+        print("🚨 Azure OpenAI connectivity check failed:", conn_error)
+        print(
+            "Please verify your AZURE_OPENAI_ENDPOINT, API key, and network connectivity."
+        )
+        # Exit early to avoid entering the agent loop without connectivity
+        import sys
+
+        sys.exit(1)
+
+
+# Run the connectivity check once at startup
+_check_azure_connection()
 
 # Agent Internal State
 state = InternalState()
@@ -131,7 +156,7 @@ tools = [
                     },
                     "knowledge_base": {
                         "type": "object",
-                        "description": "data Knowledge base to help the tool generate the plot.",
+                        "description": "Extracted data from the file resources and knowledge base to help the tool generate the plot.",
                     },
                 },
                 "required": [
@@ -140,6 +165,7 @@ tools = [
                     "columns",
                     "gen_output_program_fn",
                     "output_png",
+                    "knowledge_base",
                 ],
             },
         },
@@ -276,18 +302,16 @@ If you experience an error with a tool, debug and analyze the error, if you can 
 otherwise, you should not call the tool again, and you should find a different set of actions to solve the task.
 
 In case you encounter an error, and after debugging and analyzing alternatives steps with given tools - you conclude there is no action you can take to solve the task,
-you should respond with "Final Answer: I cannot solve the task with the tools available to me."
+you should respond with "Final response is = I cannot solve the task with the tools available to me."
 
 If you need to perform an action, **use one of these tools directly by calling it**.
 
 If you believe you have fully answered the user's query, STOP and respond like this:
-Final Answer: <the final answer to the user query content>
+\"Final response is = <the final answer to the user query content>\"
 
-Do NOT take any more actions after you have given the Final Answer.
-Do not call tools after providing the Final Answer.
+Do NOT take any more actions after you have given the Final Response.
+Do not call tools after providing the Final Response.
 
-
-Do not continue after you have given the Final Answer.
 """
 
 state.messages.append({"role": "system", "content": initial_system_prompt})
@@ -386,6 +410,11 @@ def _execute_single_tool_call(
 
         # Handle redundant calls
         if state.already_called_tool(func_name, args):
+            prev = get_previous_tool_result(state, func_name, args)
+            if prev and '"status": "success"' in prev:
+                reflection_msg = f"... already executed successfully."
+            else:
+                reflection_msg = f"... previous attempt failed, skipping."
             add_redundant_tool_response(state, tool_call, func_name, args)
             return True
 
@@ -566,6 +595,45 @@ def _process_tool_calls(state: InternalState, msg) -> None:
         _execute_single_tool_call(state, tool_call, i, len(msg.tool_calls))
 
 
+# ---------------------------------------------------------------------------
+# LLM WRAPPER WITH RATE-LIMIT HANDLING
+# ---------------------------------------------------------------------------
+
+
+def _chat_completion_with_retry(messages: list, max_attempts: int = 3):
+    """Call Azure OpenAI chat completion with basic 429-retry logic."""
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            return client.chat.completions.create(
+                model=MODEL_4o,
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+            )
+        except Exception as err:
+            # Extract error information
+            err_str = str(err)
+            if "429" in err_str or "Rate limit" in err_str:
+                wait_seconds = 60
+                print(
+                    f"⚠️ Rate limit hit. Waiting {wait_seconds}s before retry (attempt {attempt+1}/{max_attempts})…"
+                )
+                import time
+
+                time.sleep(wait_seconds)
+                attempt += 1
+                continue
+            # 400 conversation integrity issues → abort loop
+            if "role 'tool'" in err_str and "Invalid parameter" in err_str:
+                print("🚨 Conversation integrity error. Aborting agent loop.")
+                raise
+            # Any other error – re-raise so it is logged by outer handler
+            raise
+    # If we get here all retries failed
+    raise RuntimeError("Exceeded retry attempts due to continual 429 errors")
+
+
 # ============================================================================
 # MAIN AGENT EXECUTION LOOP
 # ============================================================================
@@ -590,12 +658,8 @@ if __name__ == "__main__":
             # Debug conversation state before API call
             debug_conversation_state(state.messages, "BEFORE API CALL")
 
-            response = client.chat.completions.create(
-                model=MODEL_4o,
-                messages=state.messages,
-                tools=tools,
-                tool_choice="auto",
-            )
+            # --- LLM CALL WITH RATE-LIMIT HANDLING ---
+            response = _chat_completion_with_retry(state.messages)
             msg = response.choices[0].message
             print("returned message: ", msg)
 
@@ -609,7 +673,7 @@ if __name__ == "__main__":
 
                 # Handle regular text responses and final answers
                 if msg.content and msg.content.strip().startswith(
-                    "Final Answer:"
+                    "Final response"
                 ):
                     state.register_final_answer(msg.content)
 
