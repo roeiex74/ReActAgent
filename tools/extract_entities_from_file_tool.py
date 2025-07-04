@@ -3,8 +3,6 @@ import json
 from typing import Optional
 from tools.openai_client import client, MODEL_4o
 
-# from tools.tool_manager import ToolManager
-
 
 def extract_entities_from_file(
     file_name: str,

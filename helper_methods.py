@@ -3,9 +3,16 @@ from internal_state import InternalState
 
 
 def add_redundant_tool_response(
-    state: InternalState, tool_call, func_name, args
+    state: InternalState, tool_call, func_name, args, prev_result=""
 ):
-    # print(f"🔄 REDUNDANT CALL DETECTED for {func_name} with same args {args}")
+    tool_response_added = False
+    reflection_msg = (
+        f"Skipped redundant call to '{func_name}' with args {args}."
+    )
+    if prev_result and '"status": "success"' in prev_result:
+        reflection_msg += f"... already executed successfully."
+    else:
+        reflection_msg += f"... previous attempt failed, skipping."
 
     redundant_response = {
         "tool_call_id": tool_call.id,
@@ -20,22 +27,27 @@ def add_redundant_tool_response(
             }
         ),
     }
-    state.messages.append(redundant_response)
 
-    # Enhanced reflection with more details
-    reflection_msg = f"Skipped redundant call to '{func_name}' with args {args}. Tool was already executed successfully."
+    # Append only if the tool_call_id is valid and not already present as last message
+    last_is_same = (
+        state.messages
+        and isinstance(state.messages[-1], dict)  # ← ensure .get exists
+        and state.messages[-1].get("tool_call_id") == tool_call.id
+    )
 
-    state.add_reflection(reflection_msg)
-    # print(f"✅ Added redundant tool response for {tool_call.id}")
+    if not last_is_same:
+        state.messages.append(redundant_response)
+        tool_response_added = True
 
-    # Sanity Check
-    last_msg = state.messages[-1]
-    if last_msg.get("tool_call_id") != tool_call.id:
-        print(f"❌ ERROR: Tool response not found in messages!")
-        print(f"Last message: {last_msg}")
-        add_emergency_tool_response(
-            state, tool_call, "Tool response not found in messages!"
-        )
+    # # Sanity: ensure last message is the redundant response; if not, add emergency
+    # if state.messages[-1].get("tool_call_id") != tool_call.id:
+    #     add_emergency_tool_response(
+    #         state, tool_call, "Tool response not found in messages!"
+    #     )
+
+    observation_msg = f"Observation: {reflection_msg}"
+    # Return the reflection so caller can add it at the correct point
+    return tool_response_added, reflection_msg, observation_msg
 
 
 def get_previous_tool_result(
@@ -119,6 +131,10 @@ def add_emergency_tool_response(
         ),
     }
     state.messages.append(emergency_response)
+
+    reflection_msg = f"Critical tool processing error: {str(critical_error)}"
+    observation_msg = f"Observation: {reflection_msg}"
+    return True, reflection_msg, observation_msg
     # print(f"🚨 Added emergency response for {tool_call.id}")
 
 

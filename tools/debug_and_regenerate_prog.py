@@ -9,18 +9,11 @@ def debug_and_regenerate_prog(
     columns: str,
 ) -> str:
 
-    # if tool_manager:
-    #     tool_manager.register_tool_call("debug_and_regenerate_prog")
-    #     if not tool_manager.can_call_llm():
-    #         return "LLM call limit exceeded"
-
-    #     tool_manager.register_llm_call()
-
     try:
         with open(program_fn, "r") as file:
             faulty_code = file.read()
     except Exception as e:
-        print("**Exiting tool debug_and_regenerate_prog**")
+
         return f"Failed to read program file: {str(e)}"
 
     ## Reflect on the error and the program

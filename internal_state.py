@@ -34,16 +34,14 @@ class InternalState:
         if self.log_path:
             with open(self.log_path, "a") as f:
                 f.write(text + "\n")
-        # print(text)
 
     def can_continue(self):
         return (
-            self.llm_calls < self.max_llm_calls
-            and self.tool_calls < self.max_tool_calls
+            self.llm_calls <= self.max_llm_calls
+            and self.tool_calls <= self.max_tool_calls
             and not self.done
         )
 
-    # --- LLM and tool tracking ---
     def register_llm_call(self):
         self.llm_calls += 1
 
@@ -60,14 +58,12 @@ class InternalState:
             tool_name == name and args == a for name, a in self.tool_history
         )
 
-    # --- Observation logging ---
     def add_observation(self, tool_name: str, result: str, log: bool = True):
         obs_msg = f"Observation: The tool `{tool_name}` returned:\n{result}"
         self.messages.append({"role": "assistant", "content": obs_msg})
         if log:
             self.log(obs_msg)
 
-    # --- Reflection logging ---
     def add_reflection(self, text: str):
         self.reflection_log.append(text)
         # self.log(f"[Reflection] {text}")
@@ -91,7 +87,6 @@ class InternalState:
         )
         self.add_reflection(reflection)
 
-    # --- Final answer management ---
     def register_final_answer(self, answer_text: str):
         self.done = True
         self.final_answer = answer_text
@@ -104,7 +99,6 @@ class InternalState:
         )
         self.log(f"[Error] {tool_name} failed: {error}")
 
-    # --- ReAct next step priming ---
     def add_next_step_prompt(self):
 
         # Get recent tool results from reflections
@@ -151,7 +145,7 @@ class InternalState:
                 f"- {k}: {v}" for k, v in self.knowledge_base.items()
             )
         else:
-            knowledge_summary = "None"
+            knowledge_summary = "USE EMPTY KNOWLEDGE BASE UP TO NOW"
 
         # --- Recent Tool Results ---
         if recent_tool_reflections:
@@ -166,6 +160,15 @@ class InternalState:
             )
         else:
             file_summary = "None"
+
+        # --- Remaining Budgets ---
+        llm_left = self.max_llm_calls - self.llm_calls
+        tool_left = self.max_tool_calls - self.tool_calls
+
+        budget_summary = (
+            f"LLM calls remaining:  {llm_left}\n"
+            f"Tool calls remaining: {tool_left}"
+        )
 
         # --- Tool Signature Reminder ---
         tool_signature = (
@@ -183,6 +186,7 @@ class InternalState:
         # --- Final Prompt Assembly ---
         self.log("Calling LLM For next tool to invoke")
         prompt_content = (
+            f"=== BUDGET STATUS ===\n{budget_summary}\n\n"
             f"=== KNOWLEDGE BASE ===\n{knowledge_summary}\n\n"
             f"=== RECENT TOOL RESULTS ===\n{tool_summary}\n\n"
             f"=== AVAILABLE FILE RESOURCES ===\n{file_summary}\n"
@@ -194,12 +198,12 @@ class InternalState:
             "If blocked, respond with 'Final response is = I cannot solve the task with the tools available to me.'\n"
             "Otherwise, think step-by-step, then choose the next tool call **including all required parameters**."
         )
-
+        print(prompt_content)
         self.messages.append({"role": "assistant", "content": prompt_content})
 
     def update_knowledge(self, key, value):
         self.knowledge_base[key] = value
-        self.add_reflection(f"Updated knowledge: {key} = {value}")
+        # self.add_reflection(f"Updated knowledge: {key} = {value}")
 
     def get_knowledge(self, key):
         return self.knowledge_base.get(key)

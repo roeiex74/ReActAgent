@@ -30,10 +30,6 @@ def handle_online_search(**kwargs):
             "Invalid or missing 'an_attribute' parameter", tool="online_search"
         )
 
-    print(
-        f"[TOOL] Executing online_search for: entity='{an_entity}', attribute='{an_attribute}'"
-    )
-
     try:
         result = internet_search_attribute(
             an_entity=an_entity,
@@ -82,29 +78,33 @@ def handle_extract_entities_from_file(**kwargs):
 
 
 def handle_gen_plot_prog(**kwargs):
-    plot_request = kwargs.get("plot_request")
-    input_file = kwargs.get("input_file")
-    columns = kwargs.get("columns")
-    gen_output_program_fn = kwargs.get("gen_output_program_fn")
-    output_png = kwargs.get("output_png")
-    knowledge_base = kwargs.get("knowledge_base")
-    if (
-        not plot_request
-        or not input_file
-        or not columns
-        or not gen_output_program_fn
-        or not output_png
-        or not knowledge_base
-    ):
-        return _error("Missing required parameter", tool="gen_plot_prog")
+    # required simple strings
+    required_str = [
+        "plot_request",
+        "input_file",
+        "columns",
+        "gen_output_program_fn",
+        "output_png",
+    ]
+    for key in required_str:
+        if not kwargs.get(key):
+            return _error(
+                f"Missing required parameter '{key}'", tool="gen_plot_prog"
+            )
+
+    # knowledge_base must be supplied, but {} is allowed
+    if "knowledge_base" not in kwargs or kwargs["knowledge_base"] is None:
+        return _error(
+            "Missing required parameter 'knowledge_base'", tool="gen_plot_prog"
+        )
 
     return gen_plot_prog(
-        plot_request,
-        input_file,
-        columns,
-        gen_output_program_fn,
-        output_png,
-        knowledge_base,
+        kwargs["plot_request"],
+        kwargs["input_file"],
+        kwargs["columns"],
+        kwargs["gen_output_program_fn"],
+        kwargs["output_png"],
+        kwargs["knowledge_base"],
     )
 
 

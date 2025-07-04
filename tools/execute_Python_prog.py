@@ -1,7 +1,6 @@
 import subprocess
 import json
 import os
-from typing import Optional
 
 
 def execute_Python_prog(program_fn: str) -> str:
@@ -40,22 +39,6 @@ def execute_Python_prog(program_fn: str) -> str:
 
     # Normalize the file path
     program_fn = program_fn.strip()
-
-    # Check tool manager limits
-    # if tool_manager:
-    #     if not tool_manager.can_call_tool():
-    #         return json.dumps(
-    #             {
-    #                 "status": "limit_exceeded",
-    #                 "program_file": program_fn,
-    #                 "error": "Tool usage limit exceeded",
-    #                 "stdout": "",
-    #                 "stderr": "",
-    #                 "return_code": -1,
-    #                 "execution_time": 0.0,
-    #             }
-    #         )
-    #     tool_manager.register_tool_call("execute_Python_prog")
 
     # Check if file exists
     if not os.path.exists(program_fn):

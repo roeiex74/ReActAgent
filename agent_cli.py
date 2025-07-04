@@ -4,7 +4,6 @@ import json
 import os
 from internal_state import InternalState
 from tools.tool_dispatch import tool_dispatch
-from tools.tool_manager import ToolManager
 from helper_methods import *
 from tools.openai_client import client
 
@@ -19,12 +18,7 @@ AZURE_OPEN_VERSION_4o = os.getenv("AZURE_OPEN_VERSION_4o")
 AZURE_OPENAI_API_KEY = os.getenv("CLASS_OPEN_API_KEY")
 AZURE_OPENAI_ENDPOINT = os.getenv("SUBSCRIPTION_OPENAI_ENDPOINT")
 
-# Initialize the OpenAI client
-# client = AzureOpenAI(
-#     api_key=AZURE_OPENAI_API_KEY,
-#     api_version=AZURE_OPEN_VERSION_4o,
-#     azure_endpoint=AZURE_OPENAI_ENDPOINT,
-# )
+DEBUG = os.getenv("DEBUG", "0").lower() == "1"
 
 
 def _check_azure_connection() -> None:
@@ -54,7 +48,6 @@ _check_azure_connection()
 # Agent Internal State
 state = InternalState()
 
-tool_manager = ToolManager()
 
 # Agent Tools
 tools = [
@@ -229,12 +222,29 @@ tools = [
 ]
 
 
+TOOL_LLM_COST = {
+    "debug_and_regenerate_prog": 1,
+    "extract_entities_from_file": 1,
+    "gen_plot_prog": 1,
+    "online_search": 1,
+}
+
+
 # Tool execution function
 def execute_tool(tool_name: str, **kwargs) -> str:
-    """
-    Executes the specified tool function with arguments.
-    All tools must return a str (JSON-formatted if structured).
-    """
+    """Execute specified tool and charge LLM-call budget if the tool uses GPT."""
+    # Check LLM cost before execution
+    extra_llm_cost = TOOL_LLM_COST.get(tool_name, 0)
+    if state.llm_calls + extra_llm_cost > state.max_llm_calls:
+        return json.dumps(
+            {
+                "error": "LLM call budget exceeded by tool execution",
+                "tool": tool_name,
+                "required_llm_calls": extra_llm_cost,
+                "remaining_llm_calls": state.max_llm_calls - state.llm_calls,
+            }
+        )
+
     try:
         tool_func = tool_dispatch.get(tool_name)
         if not tool_func:
@@ -244,9 +254,6 @@ def execute_tool(tool_name: str, **kwargs) -> str:
                     "available_tools": list(tool_dispatch.keys()),
                 }
             )
-
-        if "tool_manager" in tool_func.__code__.co_varnames:
-            kwargs["tool_manager"] = tool_manager
 
         return tool_func(**kwargs)
 
@@ -411,17 +418,18 @@ def _execute_single_tool_call(
         # Handle redundant calls
         if state.already_called_tool(func_name, args):
             prev = get_previous_tool_result(state, func_name, args)
-            if prev and '"status": "success"' in prev:
-                reflection_msg = f"... already executed successfully."
-            else:
-                reflection_msg = f"... previous attempt failed, skipping."
-            add_redundant_tool_response(state, tool_call, func_name, args)
-            return True
+
+            tool_response_added, reflection_msg, observation_msg = (
+                add_redundant_tool_response(
+                    state, tool_call, func_name, args, prev_result=prev
+                )
+            )
 
         # Register and execute tool
-        tool_response_added = _handle_tool_execution(
-            state, tool_call, func_name, args
-        )
+        else:
+            tool_response_added, reflection_msg, observation_msg = (
+                _handle_tool_execution(state, tool_call, func_name, args)
+            )
 
     except Exception as critical_error:
         print(
@@ -429,7 +437,9 @@ def _execute_single_tool_call(
         )
 
         if not tool_response_added:
-            add_emergency_tool_response(state, tool_call, critical_error)
+            tool_response_added, reflection_msg, observation_msg = (
+                add_emergency_tool_response(state, tool_call, critical_error)
+            )
 
         # Log error but continue processing
         state.log_error(
@@ -443,7 +453,7 @@ def _execute_single_tool_call(
             },
         )
 
-    return tool_response_added
+    return tool_response_added, reflection_msg, observation_msg
 
 
 def _handle_tool_execution(
@@ -493,9 +503,11 @@ def _handle_tool_execution(
         )
 
     # Process tool results
-    _process_tool_results(state, tool_call, func_name, args, result)
+    returned_reflection, returned_observation = _process_tool_results(
+        state, tool_call, func_name, args, result
+    )
 
-    return True
+    return True, returned_reflection, returned_observation
 
 
 def _process_tool_results(
@@ -521,7 +533,9 @@ def _process_tool_results(
         print(f"Warning: State exit error: {state_error}")
 
     # Add detailed reflection with actual tool results
-    _add_detailed_tool_reflection(state, func_name, args, result)
+    returned_reflection = _add_detailed_tool_reflection(
+        state, func_name, args, result
+    )
 
     # Update knowledge base on successful execution
     try:
@@ -529,13 +543,25 @@ def _process_tool_results(
     except Exception as kb_error:
         print(f"Warning: Knowledge base update failed: {kb_error}")
 
+    if func_name == "debug_and_regenerate_prog":
+        state.tool_history = [
+            entry
+            for entry in state.tool_history
+            if entry[0] != "execute_Python_prog"
+        ]
+
     # Add observation message for ReAct framework
-    state.messages.append(
-        {
-            "role": "assistant",
-            "content": f"Observation: The tool `{func_name}` returned:\n{result}",
-        }
+    # state.messages.append(
+    #     {
+    #         "role": "assistant",
+    #         "content": f"Observation: The tool `{func_name}` returned:\n{result}",
+    #     }
+    # )
+    observation_msg = (
+        f"Observation: The tool `{func_name}` returned:\n{result}"
     )
+
+    return returned_reflection, observation_msg
 
 
 def _add_detailed_tool_reflection(
@@ -575,7 +601,8 @@ def _add_detailed_tool_reflection(
         reflection = f"Tool '{func_name}' executed successfully with args {args}. Result: {result[:200]}{'...' if len(result) > 200 else ''}"
 
     # Add the detailed reflection (this goes to reflection_log)
-    state.add_reflection(reflection)
+    # state.add_reflection(reflection)
+    return reflection
 
 
 def _process_tool_calls(state: InternalState, msg) -> None:
@@ -591,8 +618,18 @@ def _process_tool_calls(state: InternalState, msg) -> None:
     print(f"Added assistant message with {len(msg.tool_calls)} tool calls")
 
     # Process each tool call
+    reflections = []
+    observations = []
     for i, tool_call in enumerate(msg.tool_calls):
-        _execute_single_tool_call(state, tool_call, i, len(msg.tool_calls))
+        _, reflection_msg, observation_msg = _execute_single_tool_call(
+            state, tool_call, i, len(msg.tool_calls)
+        )
+        reflections.append(reflection_msg)
+        observations.append(observation_msg)
+    for r in reflections:
+        state.add_reflection(r)
+    for o in observations:
+        state.messages.append({"role": "assistant", "content": o})
 
 
 # ---------------------------------------------------------------------------
@@ -626,7 +663,6 @@ def _chat_completion_with_retry(messages: list, max_attempts: int = 3):
                 continue
             # 400 conversation integrity issues → abort loop
             if "role 'tool'" in err_str and "Invalid parameter" in err_str:
-                print("🚨 Conversation integrity error. Aborting agent loop.")
                 raise
             # Any other error – re-raise so it is logged by outer handler
             raise
@@ -639,29 +675,25 @@ def _chat_completion_with_retry(messages: list, max_attempts: int = 3):
 # ============================================================================
 
 if __name__ == "__main__":
-    # Test the tool integration first
-    # test_tool_integration()
 
-    # Then run your normal agent logic
     while state.can_continue():
         try:
             print("Calling LLM for next tool to invoke")
-            print("########################")
-            print("Tool calls: ", state.tool_calls)
-            print("LLM calls: ", state.llm_calls)
-            print("########################")
+
             if state.llm_calls > 0:
                 state.add_next_step_prompt()
 
             # TODO - Wrap costs and LLM call in a loop
             state.register_llm_call()
             # Debug conversation state before API call
-            debug_conversation_state(state.messages, "BEFORE API CALL")
+            if DEBUG:
+                debug_conversation_state(state.messages, "BEFORE API CALL")
 
             # --- LLM CALL WITH RATE-LIMIT HANDLING ---
             response = _chat_completion_with_retry(state.messages)
             msg = response.choices[0].message
-            print("returned message: ", msg)
+            if DEBUG:
+                print("returned message: ", msg)
 
             # Check if the model wants to call tools
             if msg.tool_calls and len(msg.tool_calls) > 0:
@@ -685,3 +717,18 @@ if __name__ == "__main__":
         except Exception as e:
             state.log_error("Unknown error", str(e), {})
             continue
+
+    if not state.done:
+        # Decide reason
+        if (
+            state.llm_calls > state.max_llm_calls
+            or state.tool_calls > state.max_tool_calls
+        ):
+            reason = "budget exhausted"
+        else:
+            reason = "unable to solve with available tools"
+
+        fail_msg = f"Final response is = I cannot solve the task with the tools available to me. (Reason: {reason})"
+        state.register_final_answer(fail_msg)
+        if DEBUG:
+            print(fail_msg)

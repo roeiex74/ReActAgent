@@ -1,0 +1,3 @@
+Find a country that belongs to the UN but is NOT listed in the file whs_2024.csv.
+Store the result in the file "result.json" as a JSON structure with one field:
+"name_of_country".

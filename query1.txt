@@ -1,8 +1,5 @@
-Find those countries rated as one of the top 7 countries to raise families using the appropriate file resource. We'll call
-them the 7C countries. Store the 7C countries in "top-7.json" where the json contains one field, "top-7", an
-array giving the names of the 7 countries.
-Next, generate a program, using the appropriate file resource, to plot the average "Healthy life expectancy" for all
-countries (using "Country name" column), the average "Healthy life expectancy" for the 7C countries, and the "Healthy
-life expectancy" for the country that has the highest "Healthy life expectancy" score. In the plot state the name of the
-country that has the highest "Healthy life expectancy" score, and the values of the averages.
-Execute the program and generate the plot.
+Create a program to plot the average happiness score and the happiness scores of the top 5 and the
+lowest 5 countries in the file whs_2024.csv.
+It should also plot the average happiness score of all countries in that file. The program should store the
+.png plot in a file and then terminate.
+Execute the program to generate the plot.

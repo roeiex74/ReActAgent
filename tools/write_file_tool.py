@@ -1,8 +1,6 @@
 import json
 from typing import Optional
 
-# from tools.tool_manager import ToolManager
-
 
 def write_file(file_content: str, fn: str) -> str:
     """
